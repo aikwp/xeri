@@ -703,6 +703,7 @@ def get_platform():
             "i686": "x86",
             "aarch64": "arm64_v8a",
             "armv7l": "armeabi_v7a",
+            "armv8l": "armeabi_v7a",
         }[machine]
     elif osname == "linux":
         # At least on Linux/Intel, 'machine' is the processor --
