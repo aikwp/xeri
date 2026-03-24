@@ -164,14 +164,6 @@ elif sys.platform.startswith("aix"):
 
     from ctypes._aix import find_library
 
-elif sys.platform == "android":
-    def find_library(name):
-        directory = "/system/lib"
-        if "64" in os.uname().machine:
-            directory += "64"
-
-        fname = f"{directory}/lib{name}.so"
-        return fname if os.path.isfile(fname) else None
 
 elif sys.platform == "emscripten":
     def _is_wasm(filename):
