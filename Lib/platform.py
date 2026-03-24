@@ -616,7 +616,7 @@ def android_ver(release="", api_level=0, manufacturer="", model="", device="",
                     return buffer.value.decode("UTF-8", "backslashreplace")
 
             release = getprop("ro.build.version.release", release)
-            api_level = int(getprop("ro.build.version.sdk", api_level))
+            api_level = @TERMUX_PKG_API_LEVEL@
             manufacturer = getprop("ro.product.manufacturer", manufacturer)
             model = getprop("ro.product.model", model)
             device = getprop("ro.product.device", device)
