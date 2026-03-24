@@ -20604,7 +20604,6 @@ printf "%s\n" "$ac_cv_func_link" >&6; }
   if test "x$ac_cv_func_link" = xyes
 then :
 
-printf "%s\n" "#define HAVE_LINK 1" >>confdefs.h
 
 fi
 
