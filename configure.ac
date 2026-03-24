@@ -1170,6 +1170,7 @@ dnl architecture. PLATFORM_TRIPLET will be a pair or single value for these
 dnl platforms.
 AC_MSG_CHECKING([for multiarch])
 AS_CASE([$ac_sys_system],
+  [Linux-android], [MULTIARCH=""],
   [Darwin*], [MULTIARCH=""],
   [iOS], [MULTIARCH=""],
   [FreeBSD*], [MULTIARCH=""],
