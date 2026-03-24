@@ -5218,10 +5218,6 @@ if test "$ac_sys_system" = "Linux-android"; then
   blocked_funcs="chroot initgroups setegid seteuid setgid sethostname
     setregid setresgid setresuid setreuid setuid"
 
-  # These functions are unimplemented and always return an error
-  # (https://android.googlesource.com/platform/system/sepolicy/+/refs/heads/android13-release/public/domain.te#1044)
-  blocked_funcs="$blocked_funcs sem_open sem_unlink"
-
   # Before API level 23, when fchmodat is called with the unimplemented flag
   # AT_SYMLINK_NOFOLLOW, instead of returning ENOTSUP as it should, it actually
   # follows the symlink.

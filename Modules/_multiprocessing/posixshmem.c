@@ -17,6 +17,141 @@ posixshmem - A Python extension that provides shm_open() and shm_unlink()
 #endif
 
 
+#ifdef __ANDROID__
+#include <errno.h>
+#include <fcntl.h>      /* open, O_CLOEXEC          */
+#include <limits.h>     /* PATH_MAX                  */
+#include <pthread.h>    /* pthread_once              */
+#include <stdlib.h>     /* getenv                    */
+#include <string.h>     /* stpncpy, strnlen, memchr  */
+#include <sys/stat.h>   /* mkdir                     */
+#include <unistd.h>     /* close, unlink             */
+
+/* All internal helpers: static + hidden visibility + no name mangling. */
+#define _ASHM \
+    __attribute__((visibility("hidden"))) static
+
+/* ------------------------------------------------------------------ */
+/* Basedir: resolved and cached exactly once via pthread_once           */
+/* ------------------------------------------------------------------ */
+
+static const char         *_ashm_basedir = NULL;
+static pthread_once_t      _ashm_once    = PTHREAD_ONCE_INIT;
+
+__attribute__((cold))
+_ASHM void
+_ashm_init(void)
+{
+    /*
+     * @TERMUX_PREFIX@ is substituted by Termux's configure wrapper.
+     * When it was not substituted the first byte is still a literal '@'.
+     */
+    static const char termux_tmp[] = "@TERMUX_PREFIX@/tmp";
+
+    if (termux_tmp[0] != '@') {
+        _ashm_basedir = termux_tmp;
+    } else {
+        const char *t = getenv("TMPDIR");
+        _ashm_basedir = (t != NULL && t[0] != '\0') ? t : "/data/local/tmp";
+    }
+
+    /* Best-effort mkdir; EEXIST is fine. Errors surface later via open(2). */
+    (void)mkdir(_ashm_basedir, 0700);
+}
+
+_ASHM const char *
+ashm_basedir(void)
+{
+    (void)pthread_once(&_ashm_once, _ashm_init);
+    return _ashm_basedir;
+}
+
+/* ------------------------------------------------------------------ */
+/* Path construction — no printf, single-pass name validation           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Build the backing-file path for POSIX shm name into buf[bufsz].
+ *
+ * POSIX semantics enforced:
+ *   - Strip all leading '/' (spec requires at least one).
+ *   - Bare name must be non-empty.
+ *   - No '/' within the bare name (flat namespace).
+ *
+ * Returns 0 on success, -1 with errno set on error.
+ */
+_ASHM int
+ashm_path(const char *name, char *buf, size_t bufsz)
+{
+    /* Strip mandatory leading slash(es). */
+    while (*name == '/')
+        ++name;
+
+    /*
+     * Validate bare name in one pass:
+     *   strnlen → catches empty string
+     *   memchr  → rejects embedded slashes (flat namespace)
+     */
+    size_t nlen = strnlen(name, PATH_MAX);
+    if (nlen == 0 || memchr(name, '/', nlen) != NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const char *base  = ashm_basedir();
+    size_t      blen  = strnlen(base, PATH_MAX);
+
+    /* Need: blen + '/' + nlen + '\0' */
+    if (blen + 1 + nlen + 1 > bufsz) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    /* Assemble path with stpncpy — no printf overhead. */
+    char *p  = stpncpy(buf,  base, blen);
+    *p++     = '/';
+    p        = stpncpy(p, name, nlen);
+    *p       = '\0';
+
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* shm_open(3) emulation                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Pass O_CLOEXEC straight into open(2) — present on every Android API
+ * level we care about (API 9+, Linux ≥ 2.6.23) — so no fcntl round-trip.
+ * POSIX shm_open is specified to always return a close-on-exec descriptor.
+ */
+_ASHM int
+shm_open(const char *name, int oflag, mode_t mode)
+{
+    char path[PATH_MAX];
+    if (ashm_path(name, path, sizeof(path)) != 0)
+        return -1;
+
+    return open(path, oflag | O_CLOEXEC, mode);
+}
+
+/* ------------------------------------------------------------------ */
+/* shm_unlink(3) emulation                                              */
+/* ------------------------------------------------------------------ */
+
+_ASHM int
+shm_unlink(const char *name)
+{
+    char path[PATH_MAX];
+    if (ashm_path(name, path, sizeof(path)) != 0)
+        return -1;
+
+    return unlink(path);
+}
+
+#undef _ASHM
+#endif /* __ANDROID__ */
+
 /*[clinic input]
 module _posixshmem
 [clinic start generated code]*/

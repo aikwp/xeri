@@ -24,6 +24,49 @@ __all__ = ['BufferWrapper']
 # Inheritable class which wraps an mmap, and from which blocks can be allocated
 #
 
+
+_android_cache: bool | None = None
+
+def _is_android() -> bool:
+    """Return True when running on any Android-derived kernel.
+
+    Detection order (most reliable → least):
+      1. sys.platform == 'android'        — CPython 3.13+ sets this on Android
+      2. hasattr(sys, 'getandroidapilevel') — BeeWare/Chaquopy and other
+                                             embeddings expose this attribute
+      3. /proc/sys/kernel/osrelease       — procfs: single 64-byte read, no
+                                            uname(2) syscall, no module import;
+                                            AOSP kernels always contain 'android'
+                                            (e.g. "5.15.104-android13-8-00224-…")
+                                            Only reached on sys.platform=='linux'.
+
+    Result is cached in _android_cache so the procfs read (path 3) happens
+    at most once per interpreter lifetime regardless of call count.
+    """
+    global _android_cache
+    if _android_cache is not None:
+        return _android_cache
+
+    # Paths 1 & 2: zero I/O, available since Python 3.13 / embedding runtimes.
+    if sys.platform == 'android' or hasattr(sys, 'getandroidapilevel'):
+        _android_cache = True
+        return True
+
+    # Path 3: procfs fallback for older CPython on Linux-Android.
+    # /proc/sys/kernel/osrelease is preferred over /proc/version because it
+    # contains *only* the release string (no extra kernel build metadata),
+    # making the 'android' substring check unambiguous and the read cheaper.
+    if sys.platform == 'linux':
+        try:
+            with open('/proc/sys/kernel/osrelease', 'r', encoding='ascii') as fh:
+                _android_cache = 'android' in fh.readline()
+        except OSError:
+            _android_cache = False
+    else:
+        _android_cache = False
+
+    return _android_cache
+
 if sys.platform == 'win32':
 
     import _winapi
@@ -68,9 +111,11 @@ else:
         """
         A shared memory area backed by a temporary file (POSIX).
         """
-
         if sys.platform == 'linux':
-            _dir_candidates = ['/dev/shm']
+            if _is_android():
+                _dir_candidates = []
+            else:
+                _dir_candidates = ['/dev/shm']
         else:
             _dir_candidates = []
 
